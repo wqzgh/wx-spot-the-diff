@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>找不同</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%; background: #F2EDE4; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #wrap { width: 100vw; height: 100vh; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+<script>
+(function () {
+  var LEVEL = __LEVEL__;
+  var SRC_A = "__IMG_A__";
+  var SRC_B = "__IMG_B__";
+
+  var C = {
+    bg: '#F2EDE4', panel: '#FFFFFF', text: '#2C2C2A', muted: '#8A8880',
+    accent: '#D85A30', ok: '#1D9E75', hint: '#EF9F27', miss: '#E24B4A',
+    mask: 'rgba(28,28,26,0.74)'
+  };
+
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d');
+  var W = 0, H = 0, dpr = 1;
+  var frames = [], rects = [], hintBtn = null, restartBtn = null;
+
+  var state = {
+    title: '', diffs: [], found: [], foundAt: [], hints: 3,
+    timeLimit: 90, timeLeft: 90, elapsed: 0, status: 'loading',
+    imgA: null, imgB: null, hintIndex: -1, t: 0,
+    miss: null, missAge: 0, winAt: 0
+  };
+
+  // ---------- 布局 ----------
+  function layout() {
+    var u = dpr;
+    var pad = 10 * u, hudH = 54 * u, btnH = 50 * u;
+    var top = hudH;
+    var availH = H - hudH - btnH - pad * 4;
+    var frameH = availH / 2, frameW = W - pad * 2;
+    frames = [
+      { x: pad, y: top + pad, w: frameW, h: frameH },
+      { x: pad, y: top + pad * 2 + frameH, w: frameW, h: frameH }
+    ];
+    hintBtn = { x: pad, y: H - btnH - pad, w: frameW, h: btnH };
+    restartBtn = { x: W / 2 - 90 * u, y: H / 2 + 40 * u, w: 180 * u, h: 46 * u };
+  }
+
+  function resize() {
+    var r = cv.getBoundingClientRect();
+    dpr = window.devicePixelRatio || 1;
+    cv.width = Math.max(1, Math.round(r.width * dpr));
+    cv.height = Math.max(1, Math.round(r.height * dpr));
+    W = cv.width; H = cv.height;
+    layout();
+  }
+
+  function fit(frame, img) {
+    var s = Math.min(frame.w / img.width, frame.h / img.height);
+    var w = img.width * s, h = img.height * s;
+    return { x: frame.x + (frame.w - w) / 2, y: frame.y + (frame.h - h) / 2, w: w, h: h };
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function inRect(p, r) {
+    return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+  }
+
+  // ---------- 音效 ----------
+  var actx = null;
+  function beep(ok) {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      var o = actx.createOscillator(), g = actx.createGain();
+      o.connect(g); g.connect(actx.destination);
+      o.type = 'sine';
+      o.frequency.value = ok ? 880 : 210;
+      g.gain.setValueAtTime(0.0001, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.16, actx.currentTime + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + (ok ? 0.24 : 0.16));
+      o.start(); o.stop(actx.currentTime + 0.32);
+    } catch (e) { /* 静音环境忽略 */ }
+  }
+
+  // ---------- 绘制 ----------
+  function circleGeom(rect, d) {
+    return {
+      cx: rect.x + d.x * rect.w,
+      cy: rect.y + d.y * rect.h,
+      r: d.r * Math.min(rect.w, rect.h)
+    };
+  }
+
+  function strokeCircle(rect, d, color, lw, alpha, scale) {
+    var g = circleGeom(rect, d);
+    ctx.save();
+    if (alpha !== undefined) ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw * dpr;
+    ctx.beginPath();
+    ctx.arc(g.cx, g.cy, g.r * (scale || 1), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    return g;
+  }
+
+  function drawBadge(g, i) {
+    var u = dpr;
+    ctx.save();
+    ctx.fillStyle = C.ok;
+    ctx.beginPath();
+    ctx.arc(g.cx - g.r * 0.72, g.cy - g.r * 0.72, 13 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '500 ' + (13 * u) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(i), g.cx - g.r * 0.72, g.cy - g.r * 0.72);
+    ctx.restore();
+  }
+
+  function draw() {
+    var u = dpr;
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    var found = 0;
+    for (var k = 0; k < state.found.length; k++) if (state.found[k]) found++;
+
+    // HUD
+    ctx.fillStyle = C.text;
+    ctx.font = '500 ' + (15 * u) + 'px sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillText(state.title, 16 * u, 26 * u);
+    var left = Math.max(0, state.timeLeft);
+    var mm = String(Math.floor(left / 60));
+    var ss = String(Math.floor(left % 60));
+    if (mm.length < 2) mm = '0' + mm;
+    if (ss.length < 2) ss = '0' + ss;
+    ctx.textAlign = 'right';
+    ctx.fillStyle = left <= 10 ? C.miss : C.text;
+    ctx.fillText(mm + ':' + ss, W - 16 * u, 26 * u);
+    ctx.fillStyle = C.muted;
+    ctx.font = (12 * u) + 'px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('已找到 ' + found + ' / ' + state.diffs.length + '   提示 ' + state.hints,
+                 16 * u, 45 * u);
+
+    // 两图
+    var imgs = [state.imgA, state.imgB];
+    for (var i = 0; i < 2; i++) {
+      var f = frames[i];
+      ctx.fillStyle = C.panel;
+      roundRect(f.x, f.y, f.w, f.h, 10 * u);
+      ctx.fill();
+      var img = imgs[i];
+      if (!img || !img.width) continue;
+      var r = fit(f, img);
+      rects[i] = r;
+      ctx.drawImage(img, r.x, r.y, r.w, r.h);
+
+      for (var j = 0; j < state.diffs.length; j++) {
+        if (!state.found[j]) continue;
+        var age = state.t - state.foundAt[j];
+        var anim = Math.min(1, age / 260);
+        var scale = 1.35 - 0.35 * anim;
+        var g = strokeCircle(r, state.diffs[j], C.ok, 3, undefined, scale);
+        drawBadge(g, j + 1);
+      }
+      if (state.hintIndex >= 0 && !state.found[state.hintIndex]) {
+        var blink = 0.4 + 0.6 * Math.abs(Math.sin(state.t / 260));
+        strokeCircle(r, state.diffs[state.hintIndex], C.hint, 4, blink);
+      }
+      if (state.miss && state.miss.frame === i && state.missAge < 520) {
+        var a = 1 - state.missAge / 520;
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.strokeStyle = C.miss;
+        ctx.lineWidth = 4 * u;
+        ctx.beginPath();
+        ctx.moveTo(state.miss.px - 15 * u, state.miss.py - 15 * u);
+        ctx.lineTo(state.miss.px + 15 * u, state.miss.py + 15 * u);
+        ctx.moveTo(state.miss.px + 15 * u, state.miss.py - 15 * u);
+        ctx.lineTo(state.miss.px - 15 * u, state.miss.py + 15 * u);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 提示按钮
+    var b = hintBtn;
+    ctx.fillStyle = state.hints > 0 ? C.accent : '#C9C6BD';
+    roundRect(b.x, b.y, b.w, b.h, 10 * u);
+    ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '500 ' + (16 * u) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(state.hints > 0 ? ('提示（剩 ' + state.hints + '）') : '提示已用完',
+                 b.x + b.w / 2, b.y + b.h / 2);
+
+    // 结算
+    if (state.status !== 'playing' && state.status !== 'loading') {
+      ctx.fillStyle = C.mask;
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '500 ' + (22 * u) + 'px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(state.status === 'win' ? '全部找到！' : '时间到', W / 2, H / 2 - 40 * u);
+      ctx.fillStyle = '#DDD9CF';
+      ctx.font = (14 * u) + 'px sans-serif';
+      var txt = state.status === 'win'
+        ? ('用时 ' + state.elapsed.toFixed(1) + ' 秒，用了 ' + (state.maxHints - state.hints) + ' 次提示')
+        : ('找到 ' + found + ' / ' + state.diffs.length + ' 处');
+      ctx.fillText(txt, W / 2, H / 2 - 12 * u);
+      var rb = restartBtn;
+      ctx.fillStyle = C.accent;
+      roundRect(rb.x, rb.y, rb.w, rb.h, 23 * u);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '500 ' + (16 * u) + 'px sans-serif';
+      ctx.fillText('再来一次', rb.x + rb.w / 2, rb.y + rb.h / 2);
+    }
+  }
+
+  // ---------- 交互 ----------
+  function hitTest(rect, px, py) {
+    var short = Math.min(rect.w, rect.h);
+    var best = -1, bestDist = Infinity;
+    for (var i = 0; i < state.diffs.length; i++) {
+      var d = state.diffs[i];
+      var cx = rect.x + d.x * rect.w;
+      var cy = rect.y + d.y * rect.h;
+      var r = d.r * short;
+      var dist = Math.hypot(px - cx, py - cy);
+      if (dist < r * 1.15 && dist < bestDist) { best = i; bestDist = dist; }
+    }
+    return best;
+  }
+
+  function pickUnfound() {
+    var left = [];
+    for (var i = 0; i < state.diffs.length; i++) if (!state.found[i]) left.push(i);
+    if (!left.length) return -1;
+    return left[Math.floor(Math.random() * left.length)];
+  }
+
+  function onPoint(p) {
+    if (state.status === 'win' || state.status === 'lose') {
+      if (inRect(p, restartBtn)) restart();
+      return;
+    }
+    if (state.status !== 'playing') return;
+    if (inRect(p, hintBtn)) {
+      if (state.hints > 0) {
+        state.hints--;
+        state.hintIndex = pickUnfound();
+      }
+      return;
+    }
+    if (!state.imgA || !state.imgB) return;
+    for (var i = 0; i < 2; i++) {
+      var r = rects[i];
+      if (!r || !inRect(p, r)) continue;
+      var hit = hitTest(r, p.x, p.y);
+      if (hit >= 0 && !state.found[hit]) {
+        state.found[hit] = true;
+        state.foundAt[hit] = state.t;
+        if (state.hintIndex === hit) state.hintIndex = -1;
+        beep(true);
+        if (state.found.every(Boolean)) { state.status = 'win'; state.winAt = state.t; }
+      } else {
+        state.miss = { frame: i, px: p.x, py: p.y };
+        state.missAge = 0;
+        state.timeLeft -= 2;
+        beep(false);
+      }
+      return;
+    }
+  }
+
+  cv.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    var r = cv.getBoundingClientRect();
+    onPoint({ x: (e.clientX - r.left) * dpr, y: (e.clientY - r.top) * dpr });
+  });
+
+  // ---------- 主循环 ----------
+  var last = 0;
+  function loop(now) {
+    var dt = last ? now - last : 0;
+    last = now;
+    state.t = now;
+
+    if (state.status === 'playing' && state.imgA && state.imgB && !LEVEL.reveal) {
+      state.timeLeft -= dt / 1000;
+      state.elapsed += dt / 1000;
+      if (state.timeLeft <= 0) { state.timeLeft = 0; state.status = 'lose'; }
+    }
+    if (state.miss) {
+      state.missAge += dt;
+      if (state.missAge > 520) state.miss = null;
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- 启动 ----------
+  function restart() {
+    state.diffs = LEVEL.diffs || [];
+    state.found = state.diffs.map(function () { return !!LEVEL.reveal; });
+    state.foundAt = state.diffs.map(function () { return 0; });
+    state.hints = LEVEL.hintLimit;
+    state.maxHints = LEVEL.hintLimit;
+    state.timeLimit = LEVEL.timeLimit;
+    state.timeLeft = LEVEL.timeLimit;
+    state.elapsed = 0;
+    state.hintIndex = -1;
+    state.miss = null;
+    state.status = 'playing';
+  }
+
+  function loadImage(src) {
+    return new Promise(function (res, rej) {
+      var img = new Image();
+      img.onload = function () { res(img); };
+      img.onerror = function () { rej(new Error('图片加载失败')); };
+      img.src = src;
+    });
+  }
+
+  state.title = LEVEL.title || '找不同';
+  state.diffs = LEVEL.diffs || [];
+  state.found = state.diffs.map(function () { return !!LEVEL.reveal; });
+  state.foundAt = state.diffs.map(function () { return 0; });
+  state.hints = LEVEL.hintLimit;
+  state.maxHints = LEVEL.hintLimit;
+  state.timeLimit = LEVEL.timeLimit;
+  state.timeLeft = LEVEL.timeLimit;
+
+  resize();
+  window.addEventListener('resize', resize);
+
+  Promise.all([loadImage(SRC_A), loadImage(SRC_B)]).then(function (a) {
+    state.imgA = a[0];
+    state.imgB = a[1];
+    state.status = 'playing';
+  }).catch(function (err) {
+    console.error(err);
+    state.title = '资源加载失败';
+  });
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

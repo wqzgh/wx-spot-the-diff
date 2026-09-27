@@ -1,0 +1,1537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>找不同关卡标注工具</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --line: #e3e6ea; --line2: #eef0f3;
+    --text: #1f2328; --dim: #6b7280; --brand: #2f6bed; --brand-dim: #eaf0fe;
+    --danger: #e24b4a; --ok: #1d9e75; --amber: #d98b0b;
+  }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.6 -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  button, input, textarea, select { font-family: inherit; font-size: 13px; }
+
+  header {
+    flex: 0 0 auto; height: 52px; background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 8px; padding: 0 14px;
+  }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0 8px 0 0; }
+  .tag { font-size: 11px; color: var(--dim); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+  .tag.dirty { color: #8a6100; background: #fff8e6; border-color: #f0d9a0; }
+  .spacer { flex: 1; }
+  .btn { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 6px; padding: 6px 12px; cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: var(--bg); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn.primary:hover { background: #2560d8; }
+  .btn.sm { padding: 4px 8px; font-size: 12px; }
+  .btn.warn { border-color: var(--amber); color: #8a6100; background: #fff8e6; }
+  .row2 { display: flex; gap: 8px; align-items: center; }
+  .field { display: flex; align-items: center; gap: 6px; }
+  .field label { color: var(--dim); font-size: 12px; }
+  .field input[type=text] { border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; width: 110px; background: #fff; }
+  .field input[type=number] { border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; background: #fff; font-size: 13px; }
+  .field input:disabled { background: #f1f3f6; color: #9aa4b2; }
+  .field input:focus { outline: 2px solid var(--brand); outline-offset: -1px; }
+
+  .body { flex: 1; display: flex; min-height: 0; }
+  aside { background: var(--panel); overflow-y: auto; }
+  .left { flex: 0 0 300px; border-right: 1px solid var(--line); padding: 14px; }
+  .right { flex: 0 0 330px; border-left: 1px solid var(--line); padding: 14px; }
+  main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 14px; gap: 10px; }
+
+  .sec { margin-bottom: 16px; }
+  .sec > h2 { font-size: 12px; font-weight: 600; color: var(--dim); margin: 0 0 8px; letter-spacing: .3px;
+              display: flex; align-items: center; gap: 6px; }
+  .sec > h2 .spacer { flex: 1; }
+  .drop { border: 1.5px dashed var(--line); border-radius: 8px; padding: 14px 10px; text-align: center; color: var(--dim); cursor: pointer; background: #fbfbfc; transition: all .15s; }
+  .drop:hover { border-color: var(--brand); color: var(--brand); }
+  .drop.on { border-color: var(--brand); background: var(--brand-dim); }
+  .drop.filled { border-style: solid; background: #fff; color: var(--text); }
+  .drop .name { font-size: 12px; word-break: break-all; }
+  .drop .meta { font-size: 11px; color: var(--dim); margin-top: 3px; }
+  textarea { width: 100%; min-height: 78px; resize: vertical; border: 1px solid var(--line); border-radius: 6px; padding: 8px; line-height: 1.55; background: #fff; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; background: #fff; padding: 6px 0; cursor: pointer; color: var(--dim); }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--brand); color: #fff; }
+  .hint { font-size: 11.5px; color: var(--dim); line-height: 1.7; }
+  .hint b { color: var(--text); }
+
+  /* 目录状态卡 */
+  .dircard { border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-size: 11.5px; line-height: 1.65; }
+  .dircard.ok { background: #eef7f2; border-color: #bfe3d2; color: #14624a; }
+  .dircard.warn { background: #fff8e6; border-color: #f0d9a0; color: #8a6100; }
+  .dircard .path { font-weight: 600; word-break: break-all; font-size: 12px; }
+  .dircard .row2 { margin-top: 5px; }
+  .dircard .row2 .btn { flex: 1; }
+
+  /* 关卡列表 */
+  .lvbar { display: flex; gap: 6px; margin-bottom: 8px; }
+  .lvbar .btn { flex: 1; }
+  .lvlist { max-height: 260px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+  .lv {
+    padding: 7px 9px; border-bottom: 1px solid var(--line2); cursor: pointer;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .lv:last-child { border-bottom: 0; }
+  .lv:hover { background: #f8f9fb; }
+  .lv.on { background: var(--brand-dim); }
+  .lv .id { font-weight: 600; font-size: 12px; min-width: 26px; }
+  .lv .nm { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lv .st { font-size: 11px; color: var(--dim); display: flex; align-items: center; gap: 5px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); display: inline-block; }
+  .dot.ok { background: var(--ok); }
+  .dot.bad { background: var(--danger); }
+  .lv .x { border: 0; background: none; color: var(--dim); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+  .lv .x:hover { color: var(--danger); }
+  .lv .mod { font-size: 10px; color: #8a6100; background: #fff8e6; border-radius: 3px; padding: 0 4px; }
+
+  .stage { flex: 1; min-height: 0; display: flex; gap: 10px; }
+  .pane { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+  .pane .cap { flex: 0 0 auto; font-size: 11.5px; color: var(--dim); padding: 6px 10px; border-bottom: 1px solid var(--line2); display: flex; justify-content: space-between; }
+  .pane canvas { flex: 1; width: 100%; height: 100%; display: block; cursor: crosshair; }
+  .empty-tip { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 13px; pointer-events: none; }
+
+  .item { border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; margin-bottom: 9px; background: #fff; cursor: pointer; }
+  .item.sel { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-dim); }
+  .item .row { display: flex; align-items: center; gap: 7px; }
+  .item .no { flex: 0 0 20px; height: 20px; border-radius: 50%; background: var(--danger); color: #fff; font-size: 11px; display: flex; align-items: center; justify-content: center; font-weight: 600; }
+  .item input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line2); border-radius: 5px; padding: 4px 7px; }
+  .item input[type=text]:focus { outline: none; border-color: var(--brand); }
+  .item .del { border: 0; background: none; color: var(--dim); cursor: pointer; padding: 2px 4px; font-size: 15px; line-height: 1; }
+  .item .del:hover { color: var(--danger); }
+  .item .kv { font-size: 11px; color: var(--dim); margin-top: 6px; display: flex; align-items: center; gap: 8px; }
+  .item input[type=range] { flex: 1; min-width: 0; }
+
+  .badge { font-size: 10.5px; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+  .badge.ok { background: #e6f7f0; color: #0f7a55; }
+  .badge.weak { background: #fff5e0; color: #8a6100; }
+  .badge.none { background: #fdeaea; color: #b32724; }
+  .badge.pending { background: var(--bg); color: var(--dim); }
+  .empty { text-align: center; color: var(--dim); font-size: 12px; padding: 24px 8px; }
+
+  .modal { display: none; position: fixed; inset: 0; background: rgba(15,20,28,.45); align-items: center; justify-content: center; z-index: 100; }
+  .modal-box { background: #fff; border-radius: 10px; padding: 18px; width: 560px; max-width: 92vw; }
+  .modal-box h3 { margin: 0 0 6px; font-size: 14px; }
+  .modal-box textarea { width: 100%; height: 220px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  .row-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; flex-wrap: wrap; }
+  .conflict-list { max-height: 190px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; margin: 8px 0; }
+  .conflict-list div { padding: 6px 10px; border-bottom: 1px solid var(--line2); font-size: 12px; }
+  .conflict-list div:last-child { border-bottom: 0; }
+
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px); background: #1f2328; color: #fff; padding: 9px 18px; border-radius: 8px; font-size: 13px; opacity: 0; transition: all .25s; pointer-events: none; z-index: 99; max-width: 80vw; text-align: center; }
+  .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>找不同关卡标注工具</h1>
+  <span class="tag" id="tagDir">未绑定目录</span>
+  <span class="tag" id="tagState">未加载</span>
+  <div class="spacer"></div>
+  <div class="field"><label>关卡 ID</label><input type="text" id="levelId" placeholder="01"></div>
+  <button class="btn" id="btnPickDir">选择游戏目录</button>
+  <button class="btn" id="btnExportZip">导出 ZIP</button>
+  <button class="btn primary" id="btnSave">保存到目录</button>
+</header>
+
+<div class="body">
+  <aside class="left">
+    <div class="sec">
+      <h2>游戏目录<span class="spacer"></span>
+        <button class="btn sm" id="btnReload">刷新</button>
+        <button class="btn sm" id="btnSaveAll">全部保存</button>
+      </h2>
+      <div class="dircard warn" id="dirCard">
+        <b>还没绑定小游戏目录</b><br>
+        点顶部「选择游戏目录」选中微信小游戏根目录（含 images/ 与 levels/），工具会直接读取里面的图片和关卡。
+      </div>
+      <div class="hint" style="margin-top:6px">
+        绑定后目录就是唯一数据源：列表、图片、差异点都从目录读，改完点「保存到目录」写回。
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>关卡 <span id="lvCount" style="color:var(--brand)">0</span> 个<span class="spacer"></span>
+        <button class="btn sm" id="btnNewLevel">新建</button>
+        <button class="btn sm" id="btnDupLevel">复制</button>
+      </h2>
+      <div class="lvlist" id="lvList"></div>
+      <div class="hint" style="margin-top:6px">
+        点条目切换编辑。橙点=缺图，<span class="mod">改</span>=有未保存的修改。
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>关卡信息<span class="spacer"></span><span class="hint" id="lvTitleTip" style="font-weight:400">选中关卡后可编辑</span></h2>
+      <div class="field" style="margin-bottom:8px">
+        <label>关卡标题</label>
+        <input type="text" id="lvTitle" placeholder="玩家在选关页看到的名字" disabled style="flex:1;min-width:0">
+      </div>
+      <div class="row2">
+        <div class="field"><label>限时(秒)</label><input type="number" id="lvTime" min="20" max="600" step="5" disabled style="width:76px"></div>
+        <div class="field"><label>提示(次)</label><input type="number" id="lvHint" min="0" max="10" step="1" disabled style="width:76px"></div>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        标题改完点「保存到目录」才会写进小游戏（同时更新 levels/xx.json 的 levelName 与 index.js 的 title）。
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>1. 上传图片</h2>
+      <div class="drop" id="dropA">
+        <div class="name" id="nameA">点击或拖入「原图」</div>
+        <div class="meta" id="metaA">A 图 — 差异以它的坐标系为准</div>
+      </div>
+      <input type="file" id="fileA" accept="image/*" hidden>
+      <div style="height:8px"></div>
+      <div class="drop" id="dropB">
+        <div class="name" id="nameB">点击或拖入「改后图」</div>
+        <div class="meta" id="metaB">B 图 — 改完的对照图</div>
+      </div>
+      <input type="file" id="fileB" accept="image/*" hidden>
+    </div>
+
+    <div class="sec">
+      <h2>2. 改图提示词（可选）</h2>
+      <textarea id="prompt" placeholder="例：把手里的杯子上的图案去掉，桌子上的米色书本换成黑色，小灯去掉，裤子上系上皮带，咖啡换成果汁"></textarea>
+    </div>
+
+    <div class="sec">
+      <h2>3. 视图</h2>
+      <div class="seg">
+        <button id="viewSide" class="on">并排</button>
+        <button id="viewBlink">闪烁对比</button>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        <b>闪烁对比</b>让两图交替闪，最容易发现差异；找到后切回<b>并排</b>画圈。
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>操作说明</h2>
+      <div class="hint">
+        · 图上<b>按住拖拽</b>画圆，松开完成<br>
+        · 单击生成默认大小（半径 5%）<br>
+        · 点已有圆<b>选中</b>，拖动移动；<b>滚滚轮</b>或拖滑块调半径<br>
+        · 选中后按 <b>Delete</b> 删除
+      </div>
+      <div class="hint" style="margin-top:10px;padding:8px;background:#fff8e6;border-radius:6px;color:#8a6100">
+        <b>建议用 Chrome/Edge 打开</b>。若双击打开后点「选择游戏目录」无反应，改用 start-server.bat 启动。
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="stage">
+      <div class="pane" id="paneA">
+        <div class="cap"><span>A · 原图</span><span id="sizeA">—</span></div>
+        <canvas id="cvA"></canvas>
+        <div class="empty-tip" id="tipA">先在左侧上传原图</div>
+      </div>
+      <div class="pane" id="paneB">
+        <div class="cap"><span>B · 改后图</span><span id="sizeB">—</span></div>
+        <canvas id="cvB"></canvas>
+        <div class="empty-tip" id="tipB">再上传改后图</div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="right">
+    <div class="sec">
+      <h2>差异点 <span id="cnt" style="color:var(--brand)">0</span> 处<span class="spacer"></span>
+        <button class="btn sm" id="btnValidate">校验</button>
+      </h2>
+      <div class="hint" id="valSummary" style="margin-bottom:8px">校验会比对每个圈内两图的像素差，标出可能标错的点。</div>
+      <div id="list"><div class="empty">还没有标注<br>在图上按住拖动画圆</div></div>
+    </div>
+  </aside>
+</div>
+
+<input type="file" id="fileJson" accept=".json,.js" hidden>
+<div class="toast" id="toast"></div>
+
+<!-- 兜底 / 备份面板 -->
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <h3 id="fbTitle">JSON 备份</h3>
+    <p class="hint" id="fbWhy" style="margin:0 0 10px"></p>
+    <textarea id="fbText" readonly></textarea>
+    <div class="row-btns">
+      <button class="btn" id="fbCopy">复制</button>
+      <button class="btn" id="fbZip">重新下载 ZIP</button>
+      <button class="btn primary" id="fbClose">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 冲突确认面板 -->
+<div class="modal" id="confirm">
+  <div class="modal-box" style="width:460px">
+    <h3 id="cfTitle">确认</h3>
+    <p class="hint" id="cfText" style="margin:0"></p>
+    <div class="conflict-list" id="cfList"></div>
+    <div class="row-btns">
+      <button class="btn" id="cfCancel">取消</button>
+      <button class="btn warn" id="cfRename">换个 ID</button>
+      <button class="btn primary" id="cfOverwrite">确定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ 状态 ============
+const DB_KEY = 'spotdiff_annotator_v2';
+const S = {
+  dir: null,           // 目录句柄
+  dirName: '',
+  dirReady: false,     // 已读权限
+  levels: [],          // [{id,name,prompt,diffs,imgA,imgB,srcA,srcB,fromDir,dirty,imgDirtyA/B,...}]
+  indexRaw: [],        // 目录 index.js 原始条目（未加载的关卡也在这里，保存时原样保留）
+  deleted: new Set(),  // 本次会话中删除的目录关卡 id
+  activeId: null,
+  imgA: null, imgB: null,
+  sel: -1,
+  drag: null,
+  view: 'side',
+  blinkOn: true,
+  raw: null,
+};
+
+const $ = id => document.getElementById(id);
+const cvA = $('cvA'), cvB = $('cvB');
+const ctxA = cvA.getContext('2d'), ctxB = cvB.getContext('2d');
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('on'), 2600);
+}
+const cur = () => S.levels.find(l => l.id === S.activeId) || null;
+const FS = () => !!window.showDirectoryPicker;
+
+// ============ IndexedDB（存目录句柄） ============
+let _db = null;
+function idb() {
+  return new Promise((res, rej) => {
+    if (_db) return res(_db);
+    const q = indexedDB.open('spotdiff_annotator', 1);
+    q.onupgradeneeded = () => { q.result.createObjectStore('kv'); };
+    q.onsuccess = () => { _db = q.result; res(_db); };
+    q.onerror = () => rej(q.error);
+  });
+}
+async function idbGet(k) {
+  try {
+    const db = await idb();
+    return await new Promise((res, rej) => {
+      const r = db.transaction('kv', 'readonly').objectStore('kv').get(k);
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+  } catch (e) { return undefined; }
+}
+async function idbSet(k, v) {
+  try {
+    const db = await idb();
+    await new Promise((res, rej) => {
+      const r = db.transaction('kv', 'readwrite').objectStore('kv').put(v, k);
+      r.onsuccess = () => res(); r.onerror = () => rej(r.error);
+    });
+  } catch (e) { /* 忽略 */ }
+}
+
+async function ensurePerm(handle, write) {
+  if (!handle.queryPermission) return true;
+  const opt = { mode: write ? 'readwrite' : 'read' };
+  let p = await handle.queryPermission(opt);
+  if (p === 'granted') return true;
+  if (p === 'prompt' && handle.requestPermission) p = await handle.requestPermission(opt);
+  return p === 'granted';
+}
+
+// ============ 目录读写工具 ============
+async function getDirHandle(dir, parts, create) {
+  let d = dir;
+  for (const p of parts) d = await d.getDirectoryHandle(p, { create: !!create });
+  return d;
+}
+async function readTextFromDir(dir, relPath) {
+  const parts = relPath.split('/');
+  const d = await getDirHandle(dir, parts.slice(0, -1), false);
+  const fh = await d.getFileHandle(parts[parts.length - 1]);
+  return await (await fh.getFile()).text();
+}
+async function fileExists(dir, relPath) {
+  try {
+    const parts = relPath.split('/');
+    const d = await getDirHandle(dir, parts.slice(0, -1), false);
+    await d.getFileHandle(parts[parts.length - 1]);
+    return true;
+  } catch (e) { return false; }
+}
+async function readFileFromDir(dir, relPath) {
+  const parts = relPath.split('/');
+  const d = await getDirHandle(dir, parts.slice(0, -1), false);
+  const fh = await d.getFileHandle(parts[parts.length - 1]);
+  return await fh.getFile();
+}
+async function writeBytes(dir, relPath, u8) {
+  const parts = relPath.split('/');
+  const d = await getDirHandle(dir, parts.slice(0, -1), true);
+  const fh = await d.getFileHandle(parts[parts.length - 1], { create: true });
+  const w = await fh.createWritable();
+  await w.write({ type: 'write', position: 0, data: u8 });
+  await w.truncate(u8.length);   // 覆盖写时截掉旧文件多出来的尾部
+  await w.close();
+}
+async function removeFile(dir, relPath) {
+  try {
+    const parts = relPath.split('/');
+    const d = await getDirHandle(dir, parts.slice(0, -1), false);
+    await d.removeEntry(parts[parts.length - 1]);
+    return true;
+  } catch (e) { return false; }
+}
+async function listNames(dir, relPath) {
+  try {
+    const d = relPath ? await getDirHandle(dir, relPath.split('/'), false) : dir;
+    const out = [];
+    for await (const [name, h] of d.entries()) out.push({ name, kind: h.kind });
+    return out;
+  } catch (e) { return null; }
+}
+
+// ============ 关卡索引解析 ============
+function parseIndexText(text) {
+  let m = String(text).match(/export\s+const\s+LEVELS\s*=\s*(\[[\s\S]*?\])\s*;/);
+  if (!m) m = String(text).match(/module\.exports\s*=\s*(\[[\s\S]*?\])\s*;/);
+  if (!m) {
+    try {
+      const d = JSON.parse(text);
+      return Array.isArray(d) ? d : (d && Array.isArray(d.LEVELS) ? d.LEVELS : null);
+    } catch (e) { return null; }
+  }
+  try {
+    // 容错：脚本可能在数组末尾留尾随逗号（JS 合法，JSON.parse 报错）
+    const arr = JSON.parse(m[1].replace(/,(\s*[\]\}])/g, '$1'));
+    return Array.isArray(arr) ? arr : null;
+  } catch (e) { return null; }
+}
+
+// ============ 从目录加载关卡 ============
+async function loadFromDir(dir) {
+  const entries = [];
+  // 1) 优先读 levels/index.js
+  let raw = null;
+  try { raw = parseIndexText(await readTextFromDir(dir, 'levels/index.js')); } catch (e) { raw = null; }
+
+  if (raw && raw.length) {
+    S.indexRaw = raw;
+    for (const e of raw) {
+      entries.push({
+        id: String(e.id),
+        name: e.title || e.id,
+        prompt: '',
+        diffs: (e.diffs || []).map(d => ({
+          x: d.x, y: d.y,
+          r: d.r !== undefined ? d.r : (d.radius !== undefined ? d.radius : 0.05),
+          desc: d.desc || ''
+        })),
+        imgA: null, imgB: null,
+        srcA: e.imageA || ('images/' + e.id + '_1.jpg'),
+        srcB: e.imageB || ('images/' + e.id + '_2.jpg'),
+        timeLimit: e.timeLimit || 90,
+        hintLimit: e.hintLimit === undefined ? 3 : e.hintLimit,
+        fromDir: true, dirty: false, imgDirtyA: false, imgDirtyB: false,
+        updated: 0
+      });
+    }
+  } else {
+    // 2) 降级：扫描 levels/*.json
+    const names = (await listNames(dir, 'levels')) || [];
+    const jsons = names.filter(n => n.kind === 'file' && n.name.endsWith('.json') && n.name !== 'index.js');
+    for (const n of jsons) {
+      try {
+        const d = JSON.parse(await readTextFromDir(dir, 'levels/' + n.name));
+        const id = String(d.id || n.name.replace(/\.json$/, ''));
+        entries.push({
+          id, name: d.levelName || d.title || id, prompt: d.prompt || '',
+          diffs: (d.diffPoints || d.diffs || []).map(p => ({
+            x: p.x, y: p.y, r: p.radius !== undefined ? p.radius : (p.r !== undefined ? p.r : 0.05), desc: p.desc || ''
+          })),
+          imgA: null, imgB: null,
+          srcA: 'images/' + (d.baseImage || id + '_1.jpg'),
+          srcB: 'images/' + (d.diffImage || id + '_2.jpg'),
+          timeLimit: d.timeLimit || 90, hintLimit: d.hintLimit === undefined ? 3 : d.hintLimit,
+          fromDir: true, dirty: false, imgDirtyA: false, imgDirtyB: false, updated: 0
+        });
+      } catch (e) { /* 跳过坏文件 */ }
+    }
+    S.indexRaw = entries.map(indexEntry);
+  }
+
+  // 3) 顺带读每关的 levels/xx.json 拿 prompt
+  for (const lv of entries) {
+    try {
+      const d = JSON.parse(await readTextFromDir(dir, 'levels/' + lv.id + '.json'));
+      if (d && d.prompt) lv.prompt = d.prompt;
+      if (d && (d.levelName || d.title)) lv.name = d.levelName || d.title;
+    } catch (e) { /* 没有就算了 */ }
+  }
+
+  // 4) 检查图片文件是否存在（不读内容，选中时才加载）
+  for (const lv of entries) {
+    lv.hasA = await fileExists(dir, lv.srcA);
+    lv.hasB = await fileExists(dir, lv.srcB);
+  }
+  return entries;
+}
+
+// 确保 lv 的两张图已加载进内存；已加载过直接复用，避免反复读文件
+async function ensureImages(lv) {
+  if (!lv) { S.imgA = S.imgB = null; return; }
+  if (lv._imA && lv._imB) { S.imgA = lv._imA; S.imgB = lv._imB; return; }
+
+  const need = w => w === 'A' ? !lv._imA : !lv._imB;
+  for (const w of ['A', 'B']) {
+    if (!need(w)) continue;
+    let im = null;
+    // 本地替换过的图：dataURL 优先
+    const data = w === 'A' ? lv.imgA : lv.imgB;
+    if (data) {
+      try { im = await loadImg(data); } catch (e) { im = null; }
+    } else if (lv.fromDir && S.dir) {
+      const src = w === 'A' ? lv.srcA : lv.srcB;
+      try {
+        const file = await readFileFromDir(S.dir, src);
+        const url = URL.createObjectURL(file);
+        im = await loadImg(url);
+      } catch (e) {
+        toast('读不到图片 ' + src);
+        im = null;
+      }
+    }
+    if (w === 'A') lv._imA = im; else lv._imB = im;
+  }
+  S.imgA = lv._imA; S.imgB = lv._imB;
+  lv.hasA = !!lv._imA; lv.hasB = !!lv._imB;
+}
+
+// 用户替换图片后要丢掉旧的缓存对象，下次重新解码
+function invalidateImages(lv, which) {
+  if (which === 'A') lv._imA = null; else lv._imB = null;
+}
+
+// ============ 持久化（localStorage 作为草稿镜像） ============
+let saveTimer = null;
+function saveDB(now) {
+  clearTimeout(saveTimer);
+  const doIt = () => {
+    try {
+      const slim = S.levels.map(l => {
+        const o = Object.assign({}, l);
+        // 来自目录且图片未改动 → 不重复存图，下次从目录读
+        if (l.fromDir && !l.imgDirtyA) o.imgA = null;
+        if (l.fromDir && !l.imgDirtyB) o.imgB = null;
+        delete o._imA; delete o._imB;   // Image 对象不入库存
+        return o;
+      });
+      localStorage.setItem(DB_KEY, JSON.stringify({
+        v: 2, activeId: S.activeId, levels: slim,
+        indexRaw: S.indexRaw, dirName: S.dirName
+      }));
+    } catch (e) {
+      toast('本地空间不足，请删除一些旧关卡');
+    }
+  };
+  if (now) doIt(); else saveTimer = setTimeout(doIt, 450);
+}
+
+function loadDB() {
+  try {
+    const raw = localStorage.getItem(DB_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    S.levels = Array.isArray(d.levels) ? d.levels : [];
+    S.indexRaw = Array.isArray(d.indexRaw) ? d.indexRaw : [];
+    S.activeId = d.activeId || (S.levels[0] && S.levels[0].id) || null;
+    S.dirName = d.dirName || '';
+    return S.levels.length > 0;
+  } catch (e) { return false; }
+}
+
+// ============ 渲染 ============
+function renderDirCard() {
+  const el = $('dirCard');
+  if (!el) return;
+  if (S.dir && S.dirReady) {
+    el.className = 'dircard ok';
+    el.innerHTML = '<div class="path">' + esc(S.dirName || '（已绑定）') + '</div>' +
+      '<div>已读取 ' + S.levels.filter(l => l.fromDir).length + ' 关（' +
+      S.levels.filter(l => l.fromDir && l.hasA && l.hasB).length + ' 关图片齐全）</div>' +
+      '<div class="row2"><button class="btn sm" id="_dcReload">重新扫描目录</button>' +
+      '<button class="btn sm" id="_dcUnbind">解除绑定</button></div>';
+    $('_dcReload').onclick = () => reloadDir();
+    $('_dcUnbind').onclick = () => { S.dir = null; S.dirReady = false; S.dirName = ''; idbSet('dirHandle', null); renderDirCard(); toast('已解除绑定'); };
+  } else {
+    el.className = 'dircard warn';
+    el.innerHTML = '<b>还没绑定小游戏目录</b><br>' +
+      (FS() ? '点顶部「选择游戏目录」选中微信小游戏根目录（含 images/ 与 levels/），工具会直接读取里面的图片和关卡。'
+            : '当前浏览器不支持目录访问（File System Access API）。请用 Chrome / Edge 打开；或运行同目录的 start-server.bat 启动本地服务后再访问。');
+  }
+  $('tagDir').textContent = S.dir && S.dirReady ? ('目录 · ' + (S.dirName || '已绑定')) : '未绑定目录';
+  $('tagDir').className = 'tag' + (S.dir && S.dirReady ? '' : ' dirty');
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function renderLevels() {
+  const box = $('lvList');
+  $('lvCount').textContent = S.levels.length;
+  box.innerHTML = '';
+  if (!S.levels.length) {
+    box.innerHTML = '<div class="empty" style="padding:16px">' +
+      (S.dirReady ? '还没有关卡，点上方「新建」' : '还没有关卡。先点顶部「选择游戏目录」读取小游戏里的关卡，或点「新建」从头做一关。') +
+      '</div>';
+    return;
+  }
+  S.levels.forEach(lv => {
+    const el = document.createElement('div');
+    el.className = 'lv' + (lv.id === S.activeId ? ' on' : '');
+    const id = document.createElement('span');
+    id.className = 'id'; id.textContent = lv.id;
+    const nm = document.createElement('span');
+    nm.className = 'nm'; nm.textContent = lv.name || lv.id;
+    const st = document.createElement('span');
+    st.className = 'st';
+    const dA = document.createElement('span');
+    dA.className = 'dot ' + ((lv.imgA || lv.hasA) ? 'ok' : 'bad');
+    dA.title = (lv.imgA || lv.hasA) ? '有原图' : '缺原图';
+    const dB = document.createElement('span');
+    dB.className = 'dot ' + ((lv.imgB || lv.hasB) ? 'ok' : 'bad');
+    dB.title = (lv.imgB || lv.hasB) ? '有改后图' : '缺改后图';
+    const n = document.createElement('span'); n.textContent = (lv.diffs || []).length + '处';
+    st.append(dA, dB, n);
+    const x = document.createElement('button');
+    x.className = 'x'; x.textContent = '×'; x.title = '删除';
+    x.onclick = ev => { ev.stopPropagation(); delLevel(lv.id); };
+    el.append(id, nm, st);
+    if (lv.dirty) {
+      const m = document.createElement('span');
+      m.className = 'mod'; m.textContent = '改'; m.title = '有未保存的修改';
+      el.appendChild(m);
+    }
+    el.appendChild(x);
+    el.onclick = () => selectLevel(lv.id);
+    box.appendChild(el);
+  });
+}
+
+async function selectLevel(id) {
+  const lv = S.levels.find(l => l.id === id);
+  if (!lv) return;
+  S.activeId = id;
+  S.sel = -1;
+  S.raw = null;
+  $('levelId').value = lv.id;
+  $('lvTitle').value = lv.name || '';
+  $('lvTime').value = lv.timeLimit || 90;
+  $('lvHint').value = lv.hintLimit === undefined ? 3 : lv.hintLimit;
+  $('prompt').value = lv.prompt || '';
+  $('lvTitle').disabled = false; $('lvTime').disabled = false; $('lvHint').disabled = false;
+  $('lvTitleTip').textContent = '正在编辑 ' + lv.id;
+
+  await ensureImages(lv);
+  syncDropUI();
+  renderLevels(); renderList(); resize(); updateState();
+  scheduleValidate();
+  saveDB();
+}
+
+function loadImg(src) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = src;
+  });
+}
+
+function syncDropUI() {
+  const set = (w, img, nameId, metaId, dropId, tipId, sizeId) => {
+    if (img) {
+      $(nameId).textContent = (cur() && (w === 'A' ? cur().srcA : cur().srcB)) || '已加载图片';
+      $(metaId).textContent = img.width + ' × ' + img.height;
+      $(sizeId).textContent = img.width + ' × ' + img.height;
+      $(dropId).classList.add('filled');
+      $(tipId).style.display = 'none';
+    } else {
+      $(nameId).textContent = w === 'A' ? '点击或拖入「原图」' : '点击或拖入「改后图」';
+      $(metaId).textContent = w === 'A' ? 'A 图 — 差异以它的坐标系为准' : 'B 图 — 改完的对照图';
+      $(sizeId).textContent = '—';
+      $(dropId).classList.remove('filled');
+      $(tipId).style.display = '';
+    }
+  };
+  set('A', S.imgA, 'nameA', 'metaA', 'dropA', 'tipA', 'sizeA');
+  set('B', S.imgB, 'nameB', 'metaB', 'dropB', 'tipB', 'sizeB');
+}
+
+// ============ 新建 / 复制 / 删除 ============
+function freshId() {
+  const used = new Set(S.levels.map(l => l.id));
+  let n = S.levels.length + 1;
+  let id = String(n).padStart(2, '0');
+  while (used.has(id)) { n += 1; id = String(n).padStart(2, '0'); }
+  return id;
+}
+
+function newLevel(silent) {
+  const id = freshId();
+  S.deleted.delete(id);
+  S.levels.push({
+    id, name: '新关卡 ' + id, prompt: '', diffs: [],
+    imgA: null, imgB: null,
+    srcA: 'images/' + id + '_1.jpg', srcB: 'images/' + id + '_2.jpg',
+    timeLimit: 90, hintLimit: 3,
+    fromDir: false, dirty: true, imgDirtyA: false, imgDirtyB: false,
+    updated: Date.now()
+  });
+  selectLevel(id).then(() => { if (!silent) toast('已新建关卡 ' + id); });
+}
+
+function dupLevel() {
+  const lv = cur();
+  if (!lv) return toast('先选中一个关卡');
+  const id = freshId();
+  S.deleted.delete(id);
+  S.levels.push({
+    id, name: (lv.name || lv.id) + ' 副本', prompt: lv.prompt || '',
+    diffs: (lv.diffs || []).map(d => ({ x: d.x, y: d.y, r: d.r, desc: d.desc || '' })),
+    imgA: lv.imgA || null, imgB: lv.imgB || null,
+    srcA: 'images/' + id + '_1.jpg', srcB: 'images/' + id + '_2.jpg',
+    timeLimit: lv.timeLimit || 90, hintLimit: lv.hintLimit === undefined ? 3 : lv.hintLimit,
+    fromDir: false, dirty: true,
+    // 图来自目录时本地没有 dataURL，记下源路径，保存时复制到新关卡名下
+    imgDirtyA: true, imgDirtyB: true,
+    copyA: lv.imgA ? null : (lv.copyA || lv.srcA),
+    copyB: lv.imgB ? null : (lv.copyB || lv.srcB),
+    _imA: lv._imA || null, _imB: lv._imB || null,
+    updated: Date.now()
+  });
+  selectLevel(id).then(() => toast('已复制为 ' + id));
+}
+
+async function delLevel(id) {
+  const lv = S.levels.find(l => l.id === id);
+  if (!lv) return;
+  const c = await askConfirm('删除关卡「' + (lv.name || lv.id) + '」？',
+    lv.fromDir && S.dirReady
+      ? '这一关来自游戏目录。删除后需要点「保存到目录」才会真正从目录里移除。'
+      : '此操作不可撤销。',
+    [lv.id + ' · ' + (lv.name || '') + ' · ' + (lv.diffs || []).length + ' 处差异']);
+  if (c !== 'overwrite') { toast('已取消'); return; }
+  if (lv.fromDir) S.deleted.add(id);
+  S.levels = S.levels.filter(l => l.id !== id);
+  saveDB(true);
+  if (S.activeId === id) {
+    const next = S.levels[0];
+    if (next) selectLevel(next.id);
+    else {
+      S.activeId = null; S.imgA = S.imgB = null;
+      $('lvTitle').value = ''; $('lvTime').value = ''; $('lvHint').value = '';
+      $('lvTitle').disabled = true; $('lvTime').disabled = true; $('lvHint').disabled = true;
+      $('lvTitleTip').textContent = '没有关卡';
+      renderLevels(); renderList(); syncDropUI(); updateState();
+    }
+  } else renderLevels();
+  toast('已删除 ' + id);
+}
+
+// 通用确认：覆盖 / 换ID / 取消
+function askConflict(title, text, rows, okText) {
+  return new Promise(resolve => {
+    $('cfTitle').textContent = title;
+    $('cfText').textContent = text;
+    const box = $('cfList');
+    box.innerHTML = '';
+    (rows || []).forEach(r => {
+      const d = document.createElement('div');
+      d.textContent = r;
+      box.appendChild(d);
+    });
+    $('cfOverwrite').textContent = okText || '确定';
+    $('cfRename').style.display = '';
+    $('confirm').style.display = 'flex';
+    const done = v => {
+      $('confirm').style.display = 'none';
+      $('cfOverwrite').onclick = $('cfRename').onclick = $('cfCancel').onclick = null;
+      resolve(v);
+    };
+    $('cfOverwrite').onclick = () => done('overwrite');
+    $('cfRename').onclick = () => done('rename');
+    $('cfCancel').onclick = () => done('cancel');
+  });
+}
+function askConfirm(title, text, rows) {
+  return new Promise(resolve => {
+    $('cfTitle').textContent = title;
+    $('cfText').textContent = text;
+    const box = $('cfList');
+    box.innerHTML = '';
+    (rows || []).forEach(r => {
+      const d = document.createElement('div');
+      d.textContent = r;
+      box.appendChild(d);
+    });
+    $('cfOverwrite').textContent = '删除';
+    $('cfRename').style.display = 'none';
+    $('confirm').style.display = 'flex';
+    const done = v => {
+      $('confirm').style.display = 'none';
+      $('cfOverwrite').onclick = $('cfRename').onclick = $('cfCancel').onclick = null;
+      resolve(v);
+    };
+    $('cfOverwrite').onclick = () => done('overwrite');
+    $('cfCancel').onclick = () => done('cancel');
+  });
+}
+
+$('btnNewLevel').onclick = () => newLevel(false);
+$('btnDupLevel').onclick = dupLevel;
+
+// ID / 名称 编辑
+$('levelId').addEventListener('change', async () => {
+  const lv = cur();
+  const v = $('levelId').value.trim();
+  if (!lv || !v || v === lv.id) { if (lv) $('levelId').value = lv.id; return; }
+  const exist = S.levels.find(l => l.id === v);
+  if (exist) {
+    const c = await askConflict('ID 已被占用', '关卡「' + v + '」已存在。',
+      ['已有：' + (exist.name || v) + ' · ' + (exist.diffs || []).length + ' 处差异'], '覆盖它');
+    if (c !== 'overwrite') { $('levelId').value = lv.id; return; }
+    S.levels = S.levels.filter(l => l.id !== v);
+  }
+  if (lv.fromDir) S.deleted.add(lv.id);   // 旧 ID 视为删除
+  S.deleted.delete(v);
+  const oldA = lv.srcA, oldB = lv.srcB;
+  lv.id = v;
+  lv.srcA = 'images/' + v + '_1.jpg';
+  lv.srcB = 'images/' + v + '_2.jpg';
+  // 图是从目录读的（本地没替换过 dataURL）时，记下原路径，保存时按新名字复制过去
+  if (!lv.imgA) lv.copyA = lv.copyA || oldA;
+  if (!lv.imgB) lv.copyB = lv.copyB || oldB;
+  lv.imgDirtyA = true; lv.imgDirtyB = true;
+  lv.dirty = true;
+  S.activeId = v;
+  saveDB(true); renderLevels();
+  toast('ID 已改为 ' + v);
+});
+$('lvTitle').addEventListener('input', () => {
+  const lv = cur(); if (!lv) return;
+  lv.name = $('lvTitle').value; lv.dirty = true; saveDB(); renderLevels();
+});
+$('lvTime').addEventListener('input', () => {
+  const lv = cur(); if (!lv) return;
+  const v = parseInt($('lvTime').value, 10);
+  if (!isFinite(v) || v < 20) return;
+  lv.timeLimit = v; lv.dirty = true; saveDB();
+});
+$('lvHint').addEventListener('input', () => {
+  const lv = cur(); if (!lv) return;
+  const v = parseInt($('lvHint').value, 10);
+  if (!isFinite(v) || v < 0) return;
+  lv.hintLimit = v; lv.dirty = true; saveDB();
+});
+$('prompt').addEventListener('input', () => {
+  const lv = cur(); if (!lv) return;
+  lv.prompt = $('prompt').value; lv.dirty = true; saveDB();
+});
+
+// ============ 图片上传 ============
+function toStoredDataURL(img, maxEdge, q) {
+  const s = Math.min(1, maxEdge / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.width * s));
+  c.height = Math.max(1, Math.round(img.height * s));
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', q);
+}
+
+// 内存里的 Image 对象 → dataURL（用于从目录读进来、但没在本地替换过的图）
+function imgToDataURL(im, maxEdge, q) {
+  if (!im) return null;
+  const w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
+  if (!w || !h) return null;
+  const s = Math.min(1, maxEdge / Math.max(w, h));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w * s));
+  c.height = Math.max(1, Math.round(h * s));
+  c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', q);
+}
+
+// 关卡是否「有图」：本地替换过 / 目录里存在 / 内存已加载 / 记了来源路径待复制
+function hasBothImages(l) {
+  return !!(l.imgA && l.imgB) ||
+         !!(l.fromDir && l.hasA && l.hasB) ||
+         !!(l._imA && l._imB) ||
+         !!(l.copyA && l.copyB);
+}
+
+function loadFile(file, which) {
+  if (!file) return;
+  const lv = cur();
+  if (!lv) { toast('先新建一个关卡'); return; }
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    const data = toStoredDataURL(img, 1000, 0.82);
+    if (which === 'A') { lv._imA = img; S.imgA = img; lv.imgA = data; lv.imgDirtyA = true; lv.hasA = true; }
+    else { lv._imB = img; S.imgB = img; lv.imgB = data; lv.imgDirtyB = true; lv.hasB = true; }
+    lv.dirty = true;
+    lv.updated = Date.now();
+    S.raw = null;
+    syncDropUI(); saveDB(); resize(); updateState(); scheduleValidate(); renderLevels();
+    URL.revokeObjectURL(url);
+  };
+  img.onerror = () => toast('图片读取失败');
+  img.src = url;
+}
+
+['A', 'B'].forEach(w => {
+  const drop = $('drop' + w), input = $('file' + w);
+  drop.onclick = () => input.click();
+  input.onchange = e => { loadFile(e.target.files[0], w); input.value = ''; };
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('on'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('on'); }));
+  drop.addEventListener('drop', e => {
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) loadFile(f, w);
+  });
+});
+
+// ============ 视图 ============
+$('viewSide').onclick = () => setView('side');
+$('viewBlink').onclick = () => setView('blink');
+function setView(v) {
+  S.view = v;
+  $('viewSide').classList.toggle('on', v === 'side');
+  $('viewBlink').classList.toggle('on', v === 'blink');
+  $('paneB').style.display = v === 'side' ? '' : 'none';
+  resize();
+}
+setInterval(() => {
+  if (S.view === 'blink' && S.imgA && S.imgB) { S.blinkOn = !S.blinkOn; draw(); }
+}, 700);
+
+// ============ 绘制 ============
+function fitRect(cv, img) {
+  if (!img) return null;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  const s = Math.min(w / img.width, h / img.height);
+  return { x: (w - img.width * s) / 2, y: (h - img.height * s) / 2, w: img.width * s, h: img.height * s };
+}
+function resize() {
+  [cvA, cvB].forEach(cv => {
+    const dpr = window.devicePixelRatio || 1;
+    const r = cv.getBoundingClientRect();
+    cv.width = Math.max(1, Math.round(r.width * dpr));
+    cv.height = Math.max(1, Math.round(r.height * dpr));
+  });
+  draw();
+}
+window.addEventListener('resize', resize);
+
+function drawPane(cv, ctx, img) {
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cv.clientWidth, cv.clientHeight);
+  if (!img) return null;
+  const rect = fitRect(cv, img);
+  ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h);
+  const lv = cur(); if (!lv) return rect;
+  const short = Math.min(rect.w, rect.h);
+  (lv.diffs || []).forEach((d, i) => {
+    const cx = rect.x + d.x * rect.w, cy = rect.y + d.y * rect.h, r = d.r * short;
+    const sel = i === S.sel;
+    const bad = d.warn === 'none';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.lineWidth = sel ? 3.5 : 2.5;
+    ctx.strokeStyle = sel ? '#2f6bed' : (bad ? '#b32724' : '#e24b4a');
+    if (bad && !sel) ctx.setLineDash([6, 4]); else ctx.setLineDash([]);
+    ctx.stroke(); ctx.setLineDash([]);
+    if (sel) { ctx.fillStyle = 'rgba(47,107,237,.10)'; ctx.fill(); }
+    const bx = cx - r * 0.72 - 11, by = cy - r * 0.72 - 11;
+    ctx.beginPath(); ctx.arc(bx + 11, by + 11, 11, 0, Math.PI * 2);
+    ctx.fillStyle = sel ? '#2f6bed' : (bad ? '#b32724' : '#e24b4a'); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = '600 12px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(i + 1), bx + 11, by + 11.5);
+  });
+  return rect;
+}
+function draw() {
+  const rectA = drawPane(cvA, ctxA, S.imgA);
+  if (S.view === 'blink' && S.imgB) {
+    if (!S.blinkOn && rectA) ctxA.drawImage(S.imgB, rectA.x, rectA.y, rectA.w, rectA.h);
+  } else {
+    drawPane(cvB, ctxB, S.imgB);
+  }
+}
+
+// ============ 鼠标交互 ============
+function evtPos(cv, e) {
+  const r = cv.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+function toNorm(cv, img, px, py) {
+  const rect = fitRect(cv, img);
+  return { x: (px - rect.x) / rect.w, y: (py - rect.y) / rect.h };
+}
+function hitTest(cv, img, px, py) {
+  const rect = fitRect(cv, img);
+  if (!rect) return -1;
+  const lv = cur(); if (!lv) return -1;
+  const short = Math.min(rect.w, rect.h);
+  let best = -1, bestD = 1e9;
+  (lv.diffs || []).forEach((d, i) => {
+    const cx = rect.x + d.x * rect.w, cy = rect.y + d.y * rect.h;
+    const dist = Math.hypot(px - cx, py - cy);
+    if (dist <= d.r * short * 1.15 && dist < bestD) { bestD = dist; best = i; }
+  });
+  return best;
+}
+
+function markDirty() { const lv = cur(); if (lv) lv.dirty = true; }
+
+[cvA, cvB].forEach(cv => {
+  cv.addEventListener('mousedown', e => {
+    const img = cv === cvA ? S.imgA : S.imgB;
+    const lv = cur();
+    if (!img || !lv) return;
+    const p = evtPos(cv, e);
+    const hit = hitTest(cv, img, p.x, p.y);
+    if (hit >= 0) { S.sel = hit; S.drag = { mode: 'move', index: hit }; }
+    else {
+      const n = toNorm(cv, img, p.x, p.y);
+      S.drag = { mode: 'new', cx: n.x, cy: n.y, r: 0 };
+      S.sel = -1;
+    }
+    renderList();
+  });
+  cv.addEventListener('mousemove', e => {
+    if (!S.drag) return;
+    const img = cv === cvA ? S.imgA : S.imgB;
+    const lv = cur();
+    if (!img || !lv) return;
+    const p = evtPos(cv, e);
+    if (S.drag.mode === 'new') {
+      const rect = fitRect(cv, img);
+      const n = toNorm(cv, img, p.x, p.y);
+      S.drag.r = Math.hypot((n.x - S.drag.cx) * rect.w, (n.y - S.drag.cy) * rect.h) / Math.min(rect.w, rect.h);
+    } else {
+      const n = toNorm(cv, img, p.x, p.y);
+      const d = lv.diffs[S.drag.index];
+      d.x = Math.min(0.995, Math.max(0.005, n.x));
+      d.y = Math.min(0.995, Math.max(0.005, n.y));
+      lv.dirty = true;
+    }
+    draw();
+  });
+  cv.addEventListener('wheel', e => {
+    const lv = cur();
+    if (S.sel < 0 || !lv) return;
+    e.preventDefault();
+    const d = lv.diffs[S.sel];
+    d.r = Math.min(0.25, Math.max(0.015, d.r * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
+    lv.dirty = true;
+    syncRadiusUI(S.sel); draw(); saveDB(); scheduleValidate();
+  }, { passive: false });
+});
+window.addEventListener('mouseup', () => {
+  if (!S.drag) return;
+  const lv = cur();
+  if (S.drag.mode === 'new' && lv) {
+    const r = S.drag.r > 0.012 ? S.drag.r : 0.05;
+    lv.diffs.push({ x: S.drag.cx, y: S.drag.cy, r: r, desc: '' });
+    S.sel = lv.diffs.length - 1;
+    lv.dirty = true;
+    saveDB(); scheduleValidate();
+  }
+  S.drag = null;
+  renderList(); draw(); updateState(); renderLevels();
+});
+document.addEventListener('keydown', e => {
+  const lv = cur();
+  if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel >= 0 && lv &&
+      document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+    lv.diffs.splice(S.sel, 1);
+    lv.dirty = true;
+    S.sel = -1; renderList(); draw(); updateState(); saveDB(); renderLevels();
+  }
+});
+
+// ============ 差异点列表 ============
+function renderList() {
+  const box = $('list');
+  const lv = cur();
+  const n = lv ? (lv.diffs || []).length : 0;
+  $('cnt').textContent = n;
+  if (!n) {
+    box.innerHTML = '<div class="empty">还没有标注<br>在图上按住拖动画圆</div>';
+    return;
+  }
+  box.innerHTML = '';
+  lv.diffs.forEach((d, i) => {
+    const el = document.createElement('div');
+    el.className = 'item' + (i === S.sel ? ' sel' : '');
+    el.innerHTML =
+      '<div class="row">' +
+        '<span class="no">' + (i + 1) + '</span>' +
+        '<input type="text" placeholder="描述这处差异">' +
+        '<span class="badge pending">待校验</span>' +
+        '<button class="del" title="删除">×</button>' +
+      '</div>' +
+      '<div class="kv">' +
+        '<span>半径</span><input type="range" min="0.015" max="0.25" step="0.001">' +
+        '<span class="rval" style="min-width:34px;text-align:right"></span>' +
+        '<span class="xy" style="min-width:76px;text-align:right"></span>' +
+      '</div>';
+    const input = el.querySelector('input[type=text]');
+    input.value = d.desc || '';
+    input.oninput = () => { d.desc = input.value; markDirty(); saveDB(); };
+    input.onfocus = () => setSel(i);
+    const range = el.querySelector('input[type=range]');
+    const rval = el.querySelector('.rval');
+    range.value = d.r;
+    rval.textContent = Math.round(d.r * 100) + '%';
+    el.querySelector('.xy').textContent = d.x.toFixed(3) + ',' + d.y.toFixed(3);
+    range.oninput = () => {
+      d.r = parseFloat(range.value);
+      rval.textContent = Math.round(d.r * 100) + '%';
+      markDirty(); draw(); saveDB(); scheduleValidate();
+    };
+    range.onmousedown = ev => ev.stopPropagation();
+    range.onfocus = () => setSel(i);
+    el.onclick = ev => {
+      if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'BUTTON') return;
+      setSel(i);
+    };
+    el.querySelector('.del').onclick = ev => {
+      ev.stopPropagation();
+      lv.diffs.splice(i, 1); lv.dirty = true; S.sel = -1;
+      renderList(); draw(); updateState(); saveDB(); renderLevels();
+    };
+    box.appendChild(el);
+  });
+  syncBadges();
+}
+
+function setSel(i) {
+  S.sel = i;
+  document.querySelectorAll('#list .item').forEach((el, idx) => el.classList.toggle('sel', idx === i));
+  draw();
+}
+function syncRadiusUI(i) {
+  const el = document.querySelectorAll('#list .item')[i];
+  if (!el) return;
+  const lv = cur(); if (!lv || !lv.diffs[i]) return;
+  const range = el.querySelector('input[type=range]');
+  const rval = el.querySelector('.rval');
+  if (range) range.value = lv.diffs[i].r;
+  if (rval) rval.textContent = Math.round(lv.diffs[i].r * 100) + '%';
+  const xy = el.querySelector('.xy');
+  if (xy) xy.textContent = lv.diffs[i].x.toFixed(3) + ',' + lv.diffs[i].y.toFixed(3);
+}
+function syncBadges() {
+  const lv = cur(); if (!lv) return;
+  document.querySelectorAll('#list .item').forEach((el, i) => {
+    const d = lv.diffs[i]; if (!d) return;
+    const b = el.querySelector('.badge'); if (!b) return;
+    if (d.warn === 'ok') { b.className = 'badge ok'; b.textContent = '有差异'; }
+    else if (d.warn === 'weak') { b.className = 'badge weak'; b.textContent = '差异很弱'; }
+    else if (d.warn === 'none') { b.className = 'badge none'; b.textContent = '未检出差异'; }
+    else { b.className = 'badge pending'; b.textContent = '待校验'; }
+  });
+}
+
+// ============ 差异点校验 ============
+let valTimer = null;
+function scheduleValidate() {
+  clearTimeout(valTimer);
+  valTimer = setTimeout(() => validate(false), 500);
+}
+function rawOf(img, W, H) {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  c.getContext('2d').drawImage(img, 0, 0, W, H);
+  return c.getContext('2d').getImageData(0, 0, W, H).data;
+}
+function validate(manual) {
+  const lv = cur();
+  if (!lv || !S.imgA || !S.imgB || !lv.diffs.length) {
+    if (manual) toast('需要同时有 A、B 两张图和至少一个标注点');
+    return;
+  }
+  try {
+    if (!S.raw || S.raw.forId !== lv.id) {
+      const W = 320;
+      const H = Math.max(1, Math.round(W * S.imgA.height / S.imgA.width));
+      S.raw = { w: W, h: H, a: rawOf(S.imgA, W, H), b: rawOf(S.imgB, W, H), forId: lv.id };
+    }
+    const { w: W, h: H, a, b } = S.raw;
+    const short = Math.min(W, H);
+    let bad = 0, weak = 0;
+    lv.diffs.forEach(d => {
+      const cx = d.x * W, cy = d.y * H, r = Math.max(2, d.r * short);
+      const step = Math.max(1, Math.floor(r / 10));
+      let sum = 0, n = 0, peak = 0;
+      const y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(H - 1, Math.ceil(cy + r));
+      const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(W - 1, Math.ceil(cx + r));
+      for (let y = y0; y <= y1; y += step) {
+        for (let x = x0; x <= x1; x += step) {
+          if (Math.hypot(x - cx, y - cy) > r) continue;
+          const i = (y * W + x) * 4;
+          const v = (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2])) / 3;
+          sum += v; n += 1; if (v > peak) peak = v;
+        }
+      }
+      const mean = n ? sum / n : 0;
+      d.score = Math.round(mean);
+      d.peak = Math.round(peak);
+      d.warn = mean < 4 ? 'none' : (mean < 10 ? 'weak' : 'ok');
+      if (d.warn === 'none') bad += 1; else if (d.warn === 'weak') weak += 1;
+    });
+    saveDB(); syncBadges(); draw();
+    const ok = lv.diffs.length - bad - weak;
+    $('valSummary').innerHTML = '校验结果：<b style="color:#0f7a55">' + ok + ' 处明显</b>' +
+      (weak ? ' · <b style="color:#8a6100">' + weak + ' 处偏弱</b>' : '') +
+      (bad ? ' · <b style="color:#b32724">' + bad + ' 处未检出</b>' : '') +
+      (bad || weak ? '。虚线圈=该处两图像素几乎一致，可能标错了位置。' : '');
+    if (manual) toast(bad ? '有 ' + bad + ' 处未检出差异，请核对圈的位置' : '全部标出都有真实差异');
+  } catch (e) {
+    $('valSummary').textContent = '校验失败（浏览器禁止读取像素）：' + e.message;
+    if (manual) toast('无法读取像素：' + e.message);
+  }
+}
+$('btnValidate').onclick = () => { S.raw = null; validate(true); };
+
+// ============ 导出数据结构 ============
+function levelJSON(lv) {
+  return {
+    id: lv.id,
+    levelName: lv.name || lv.id,
+    baseImage: lv.id + '_1.jpg',
+    diffImage: lv.id + '_2.jpg',
+    prompt: lv.prompt || '',
+    totalDiffCount: (lv.diffs || []).length,
+    diffPoints: (lv.diffs || []).map(d => ({
+      x: +d.x.toFixed(4), y: +d.y.toFixed(4), radius: +d.r.toFixed(4), desc: d.desc || ''
+    }))
+  };
+}
+function indexEntry(lv) {
+  return {
+    id: lv.id, title: lv.name || lv.id,
+    imageA: lv.srcA || ('images/' + lv.id + '_1.jpg'),
+    imageB: lv.srcB || ('images/' + lv.id + '_2.jpg'),
+    diffs: (lv.diffs || []).map(d => ({ x: +d.x.toFixed(4), y: +d.y.toFixed(4), r: +d.r.toFixed(4) })),
+    timeLimit: lv.timeLimit || 90, hintLimit: lv.hintLimit === undefined ? 3 : lv.hintLimit
+  };
+}
+
+// 生成 index.js：以目录原始索引为底，本地关卡覆盖/新增，删除的移除
+function buildIndexJS(localLevels) {
+  const map = new Map();
+  (S.indexRaw || []).forEach(e => map.set(String(e.id), e));
+  S.deleted.forEach(id => map.delete(String(id)));   // 先删，后写，避免「删了又建同名」被误删
+  (localLevels || []).forEach(l => {
+    if (!(l.diffs || []).length) return;      // 没标注的不进索引
+    map.set(l.id, indexEntry(l));
+  });
+  const arr = Array.from(map.values());
+  return '// 由标注工具生成，请勿手改\nexport const LEVELS = [\n' +
+    arr.map(l => JSON.stringify(l, null, 2)).join(',\n') + '\n];\n';
+}
+
+// ============ ZIP（store 模式，零依赖） ============
+const CRC = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(u8) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function buildZip(files) {
+  const enc = new TextEncoder();
+  const parts = [], central = [];
+  let offset = 0;
+  const dosTime = 0, dosDate = ((2026 - 1980) << 9) | (9 << 5) | 26;
+  files.forEach(f => {
+    const name = enc.encode(f.name), data = f.data, crc = crc32(data);
+    const lh = new Uint8Array(30 + name.length);
+    const v = new DataView(lh.buffer);
+    v.setUint32(0, 0x04034b50, true); v.setUint16(4, 20, true); v.setUint16(6, 0x0800, true);
+    v.setUint16(8, 0, true); v.setUint16(10, dosTime, true); v.setUint16(12, dosDate, true);
+    v.setUint32(14, crc, true); v.setUint32(18, data.length, true); v.setUint32(22, data.length, true);
+    v.setUint16(26, name.length, true); v.setUint16(28, 0, true);
+    lh.set(name, 30);
+    parts.push(lh, data);
+    const ch = new Uint8Array(46 + name.length);
+    const v2 = new DataView(ch.buffer);
+    v2.setUint32(0, 0x02014b50, true); v2.setUint16(4, 20, true); v2.setUint16(6, 20, true);
+    v2.setUint16(8, 0x0800, true); v2.setUint16(10, 0, true); v2.setUint16(12, dosTime, true);
+    v2.setUint16(14, dosDate, true); v2.setUint32(16, crc, true);
+    v2.setUint32(20, data.length, true); v2.setUint32(24, data.length, true);
+    v2.setUint16(28, name.length, true); v2.setUint16(30, 0, true); v2.setUint16(32, 0, true);
+    v2.setUint16(34, 0, true); v2.setUint16(36, 0, true); v2.setUint32(38, 0, true);
+    v2.setUint32(42, offset, true);
+    ch.set(name, 46);
+    central.push(ch);
+    offset += lh.length + data.length;
+  });
+  const cs = central.reduce((s, c) => s + c.length, 0);
+  const eo = new Uint8Array(22);
+  const v3 = new DataView(eo.buffer);
+  v3.setUint32(0, 0x06054b50, true); v3.setUint16(4, 0, true); v3.setUint16(6, 0, true);
+  v3.setUint16(8, files.length, true); v3.setUint16(10, files.length, true);
+  v3.setUint32(12, cs, true); v3.setUint32(16, offset, true); v3.setUint16(20, 0, true);
+  return new Blob(parts.concat(central, [eo]), { type: 'application/zip' });
+}
+function dataURLToU8(dataURL) {
+  const b64 = dataURL.slice(dataURL.indexOf(',') + 1);
+  const bin = atob(b64);
+  const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8;
+}
+
+// ============ 选择 / 加载目录 ============
+$('btnPickDir').onclick = async () => {
+  if (!FS()) {
+    toast('当前浏览器不支持目录访问，请用 Chrome/Edge，或运行 start-server.bat');
+    return;
+  }
+  try {
+    const h = await window.showDirectoryPicker({ mode: 'readwrite' });
+    S.dir = h;
+    S.dirName = h.name || '（根目录）';
+    await idbSet('dirHandle', h);
+    toast('已选择「' + S.dirName + '」，正在读取…');
+    await reloadDir();
+  } catch (e) {
+    if (e && e.name !== 'AbortError') toast('选择目录失败：' + e.message);
+  }
+};
+
+$('btnReload').onclick = () => reloadDir();
+async function reloadDir() {
+  if (!S.dir) { toast('先点「选择游戏目录」'); return; }
+  const ok = await ensurePerm(S.dir, false);
+  if (!ok) { toast('目录读取权限被拒绝，请重新选择目录'); S.dirReady = false; renderDirCard(); return; }
+  toast('正在扫描目录…');
+  try {
+    const entries = await loadFromDir(S.dir);
+    S.levels = entries;
+    S.deleted = new Set();
+    S.dirReady = true;
+    if (!S.levels.find(l => l.id === S.activeId)) S.activeId = S.levels[0] ? S.levels[0].id : null;
+    renderDirCard(); renderLevels();
+    saveDB(true);
+    if (S.activeId) await selectLevel(S.activeId);
+    toast('已读取 ' + entries.length + ' 关');
+  } catch (e) {
+    toast('读取目录失败：' + e.message);
+  }
+}
+
+// ============ 保存到目录 ============
+$('btnSave').onclick = () => saveLevels(false);
+$('btnSaveAll').onclick = () => saveLevels(true);
+
+async function saveLevels(all) {
+  const lv = cur();
+  if (!S.dir) { toast('先点「选择游戏目录」'); return; }
+  const ok = await ensurePerm(S.dir, true);
+  if (!ok) { toast('目录写入权限被拒绝，请重新选择目录'); return; }
+
+  const targets = all
+    ? S.levels.filter(l => (l.diffs || []).length && hasBothImages(l))
+    : (lv ? [lv] : []);
+  if (!targets.length) { toast('没有可保存的关卡（需要两张图 + 至少一处标注）'); return; }
+
+  toast('正在写入…');
+  let nImg = 0;
+  try {
+    for (const l of targets) {
+      // 图片：本地替换过 → 直接写；否则从目录复制原文件（保真）；再不行从内存导出
+      for (const w of ['A', 'B']) {
+        const dirty = w === 'A' ? l.imgDirtyA : l.imgDirtyB;
+        if (!dirty) continue;
+        const dst = w === 'A' ? l.srcA : l.srcB;
+        const own = w === 'A' ? l.imgA : l.imgB;
+        const from = w === 'A' ? l.copyA : l.copyB;
+        const mem = w === 'A' ? (l._imA || (S.activeId === l.id ? S.imgA : null))
+                              : (l._imB || (S.activeId === l.id ? S.imgB : null));
+        let u8 = null;
+        if (own) u8 = dataURLToU8(own);
+        else if (from && from !== dst && await fileExists(S.dir, from)) {
+          u8 = new Uint8Array(await (await readFileFromDir(S.dir, from)).arrayBuffer());
+        } else if (mem) u8 = dataURLToU8(imgToDataURL(mem, 1000, 0.82));
+        if (!u8) { toast('关卡 ' + l.id + ' 的 ' + w + ' 图没内容可写，已跳过'); continue; }
+        await writeBytes(S.dir, dst, u8);
+        if (w === 'A') { l.imgDirtyA = false; l.hasA = true; l.copyA = null; }
+        else { l.imgDirtyB = false; l.hasB = true; l.copyB = null; }
+        nImg += 1;
+      }
+      // 关卡 JSON
+      await writeBytes(S.dir, 'levels/' + l.id + '.json',
+        new TextEncoder().encode(JSON.stringify(levelJSON(l), null, 2)));
+      l.fromDir = true;
+      l.dirty = false;
+    }
+    // index.js：以目录原始索引为底合并，永远不会只剩当前一关
+    const js = buildIndexJS(S.levels.filter(l => (l.diffs || []).length));
+    await writeBytes(S.dir, 'levels/index.js', new TextEncoder().encode(js));
+    S.indexRaw = parseIndexText(js) || S.indexRaw;
+    // 删除的关卡文件（本次又写回来的同名关卡不能删）
+    for (const id of S.deleted) {
+      if (targets.some(t => t.id === id)) continue;
+      await removeFile(S.dir, 'levels/' + id + '.json');
+      await removeFile(S.dir, 'images/' + id + '_1.jpg');
+      await removeFile(S.dir, 'images/' + id + '_2.jpg');
+    }
+    const del = S.deleted.size;
+    S.deleted = new Set();
+    saveDB(true);
+    renderLevels(); renderDirCard();
+    toast('已保存 ' + targets.length + ' 关' + (nImg ? '（' + nImg + ' 张图）' : '') +
+          (del ? '，删除 ' + del + ' 关' : '') + '，index.js 共 ' + (S.indexRaw || []).length + ' 关');
+  } catch (e) {
+    toast('写入失败：' + e.message);
+  }
+}
+
+// ============ 导出 ZIP（无目录权限时的退路） ============
+let lastFiles = null;
+$('btnExportZip').onclick = async () => {
+  try {
+    const mine = S.levels.filter(l => l.imgA && l.imgB && (l.diffs || []).length);
+    if (!mine.length) throw new Error('没有任何「两张图 + 已标注」都齐的关卡（图片可能还没加载，先点一下关卡）');
+    const files = [];
+    for (const lv of mine) {
+      files.push({ name: 'images/' + lv.id + '_1.jpg', data: dataURLToU8(lv.imgA) });
+      files.push({ name: 'images/' + lv.id + '_2.jpg', data: dataURLToU8(lv.imgB) });
+      files.push({ name: 'levels/' + lv.id + '.json', data: new TextEncoder().encode(JSON.stringify(levelJSON(lv), null, 2)) });
+    }
+    files.push({ name: 'levels/index.js', data: new TextEncoder().encode(buildIndexJS(mine)) });
+    files.push({
+      name: 'README.txt',
+      data: new TextEncoder().encode(
+        '解压后把 images/ 与 levels/ 覆盖到小游戏项目根目录，开发者工具重新编译即可。\n' +
+        '本次导出 ' + mine.length + ' 关（' + mine.map(l => l.id).join('、') + '）\n' +
+        'index.js 中共 ' + (S.indexRaw || []).length + ' 关。\n\n' +
+        '注意：主包上限 4MB，图片已压到长边 1000px；关卡多起来建议改用分包。')
+    });
+    lastFiles = files;
+    download(buildZip(files), 'levels-' + mine.map(l => l.id).join('_') + '.zip');
+    toast('已下载 ZIP（共 ' + mine.length + ' 关），解压覆盖到小游戏目录');
+  } catch (err) {
+    toast('导出出错：' + err.message);
+  }
+};
+
+$('fbClose').onclick = () => { $('modal').style.display = 'none'; };
+$('fbCopy').onclick = async () => {
+  $('fbText').select();
+  try { await navigator.clipboard.writeText($('fbText').value); toast('已复制'); }
+  catch (e) { toast('请手动全选复制'); }
+};
+$('fbZip').onclick = () => {
+  if (!lastFiles) return toast('请先点一次「导出 ZIP」');
+  download(buildZip(lastFiles), 'levels.zip');
+};
+function showFallback(why, text, title) {
+  $('fbTitle').textContent = title || 'JSON 备份';
+  $('fbWhy').textContent = why;
+  $('fbText').value = text;
+  $('modal').style.display = 'flex';
+}
+
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+function updateState() {
+  const lv = cur();
+  const n = lv ? (lv.diffs || []).length : 0;
+  const dirty = S.levels.some(l => l.dirty);
+  $('tagState').textContent = (lv ? lv.id + ' · ' : '无关卡 · ') +
+    (S.imgA ? 'A✓' : 'A✗') + ' ' + (S.imgB ? 'B✓' : 'B✗') + ' · ' + n + ' 处差异' +
+    (dirty ? ' · 未保存' : '');
+  $('tagState').className = 'tag' + (dirty ? ' dirty' : '');
+}
+
+// ============ 启动 ============
+(async function boot() {
+  renderDirCard();
+  // 1) 先渲染本地草稿，界面不空
+  const hadDirty = loadDB() && S.levels.some(l => l.dirty);
+  renderLevels();
+  // 2) 尝试恢复上次绑定的目录
+  if (FS()) {
+    const h = await idbGet('dirHandle');
+    if (h) {
+      S.dir = h;
+      S.dirName = h.name || S.dirName || '（根目录）';
+      const ok = await ensurePerm(h, false);   // 静默尝试，不弹窗
+      if (ok) {
+        try {
+          const entries = await loadFromDir(h);
+          if (hadDirty) {
+            toast('注意：本地有未保存的改动，已被目录内容覆盖（未保存的会丢失）');
+          }
+          S.levels = entries;
+          S.dirReady = true;
+          if (!S.levels.find(l => l.id === S.activeId)) S.activeId = S.levels[0] ? S.levels[0].id : null;
+          toast('已自动载入目录「' + S.dirName + '」，' + entries.length + ' 关');
+        } catch (e) {
+          toast('自动读取目录失败：' + e.message + '，请点「刷新」重试');
+        }
+      } else {
+        toast('已记住上次目录「' + S.dirName + '」，点「刷新」授权后读取');
+      }
+      renderDirCard(); renderLevels();
+    }
+  }
+  const lv = cur();
+  if (lv) await selectLevel(lv.id);
+  else { renderList(); updateState(); }
+  updateState();
+})();
+</script>
+</body>
+</html>

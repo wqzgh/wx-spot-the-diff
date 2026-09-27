@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.env
+
+# 微信开发者工具私有配置
+minigame/project.private.config.json
+
+# 标注工具大体积预览产物（可选本地保留，不入库）
+annotator/preview/
+
+# 脚本默认输出目录
+spot_diff_out/
+spot_diff_verify_out/
+
+# 系统 / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
